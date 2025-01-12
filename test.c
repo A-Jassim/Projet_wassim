@@ -3,7 +3,7 @@ pour compiler sur windows:
 gcc src/main.c -o bin/prog -I include -L lib -lmingw32 -lSDL2main -lSDL2
 
 linux:
-gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL_ttf
+gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL2_ttf
 */
 
 #include <stdio.h>

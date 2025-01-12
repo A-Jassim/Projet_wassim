@@ -9,3 +9,7 @@ typedef struct entriesTabStruct_ {
     int entriesNumber;
 }entriesTabStruct;
 
+typedef struct existingDateTabStruct_ {
+    int* date;
+    int dateNumber;
+}existingDateTabStruct;

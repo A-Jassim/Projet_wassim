@@ -4,6 +4,8 @@ gcc src/main.c -o bin/prog -I include -L lib -lmingw32 -lSDL2main -lSDL2
 
 linux:
 gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL_ttf
+gcc main.c -o prog -ljson-c -lSDL2 -lSDL2_ttf -I/usr/lib/
+
 */
 
 #include <stdio.h>
@@ -17,6 +19,10 @@ gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL_ttf
 
 #define W_HEIGHT 480
 #define W_WIDTH 640
+
+
+void refreshScreen();
+
 
 int main(int argc, char* argv[]){
     /*mois année affiché par le tableau*/
@@ -38,19 +44,32 @@ int main(int argc, char* argv[]){
     SDL_Texture *dayTexture = NULL;
     SDL_Texture *entriesTexture = NULL;
 
-    /*boutons*/
-    dayButtonsTabStruct dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
-    /*boutons pour les fleches des mois : h, w, x, y*/
-    int previousMonthButton[4] = {40, 40, 80, 80};
-    int nextMonthButton[4] = {40, 40, 240, 80};
-
     /*json parsé*/
     struct json_object *parsedJson;
     parsedJson = getParsedJson();
     struct json_object *monthJson;
+    monthJson = getMonthJson(parsedJson, currentMonthYear);
     struct json_object *dayJson;
     struct json_object *entriesJson;
     entriesTabStruct entriesTab;
+    
+    dayButtonsTabStruct dayButtonsTab;
+    existingDateTabStruct existingDateTab;
+
+    /*boutons*/
+    dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
+
+    existingDateTab = getExistingDateTab(monthJson);
+    /*attribut aux boutons le fait qu'ils soient cliquables ou non*/
+    for(int i = 0; i < dayButtonsTab.dayButtonNumber; i++){
+        dayButtonsTab.dayButtons[i].usable = existingDateTab.date[i];
+    }
+
+    
+
+    /*boutons pour les fleches des mois : h, w, x, y*/
+    int previousMonthButton[4] = {40, 40, 80, 80};
+    int nextMonthButton[4] = {40, 40, 240, 80};
 
 
     /*lancement sdl*/
@@ -111,6 +130,11 @@ int main(int argc, char* argv[]){
         // Gestion d'erreur
         return 1;
     }
+    TTF_Font* font2 = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf", 20);
+    if (font2 == NULL) {
+        // Gestion d'erreur
+        return 1;
+    }
 
     // Couleur du texte
     SDL_Color color = {0, 0, 0}; // Noir
@@ -121,37 +145,38 @@ int main(int argc, char* argv[]){
     SDL_Rect monthRect;
     monthRect.x = 120;
     monthRect.y = 80;
-    monthRect.w = 3*40;
-    monthRect.h = 40;
+    
+    SDL_Rect dayRect;
+    dayRect.x = 360;
+    dayRect.y = 120;
+    
+    SDL_Rect entriesRect;
+    entriesRect.x = 360;
+    entriesRect.y = 200;
+
+
+    /*effacer ecran*/
+    SDL_RenderClear(renderer);
+    /*afficher fond*/
+    SDL_RenderCopy(renderer, texture, NULL, &bgRect);
+    // Créer une surface contenant le texte
+    surface = TTF_RenderText_Solid(font, currentMonthString, color);
+    // Créer une texture à partir de la surface
+    monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    SDL_QueryTexture(monthTexture, NULL, NULL, &w, &h);
+    monthRect.w = w;
+    monthRect.h = h;
+    // Copier la texture sur le renderer
+    SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
+    /*afficher le rendu*/
+    SDL_RenderPresent(renderer);
 
 
     /*main*/
     int quit = 0;
     SDL_Event event;
     while(!quit){
-
-        /*effacer ecran*/
-        SDL_RenderClear(renderer);
-        /*afficher fond*/
-        SDL_RenderCopy(renderer, texture, NULL, &bgRect);
-
-
-
-        // Créer une surface contenant le texte
-        surface = TTF_RenderText_Solid(font, currentMonthString, color);
-
-        // Créer une texture à partir de la surface
-        monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
-        SDL_FreeSurface(surface);
-        SDL_QueryTexture(monthTexture, NULL, NULL, &w, &h);
-        monthRect.w = w;
-        monthRect.h = h;
-
-        // Copier la texture sur le renderer
-        SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
-
-        /*afficher le rendu*/
-        SDL_RenderPresent(renderer);
         /*evenement*/
         while(SDL_PollEvent(&event)){
             switch (event.type){
@@ -182,6 +207,28 @@ int main(int argc, char* argv[]){
                             monthJson = getMonthJson(parsedJson, currentMonthYear);
                             dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
                             currentMonthString = getMonthStr(currentMonth);
+                            
+                            existingDateTab = getExistingDateTab(monthJson);
+                            /*attribut aux boutons le fait qu'ils soient cliquables ou non*/
+                            for(int i = 0; i < dayButtonsTab.dayButtonNumber; i++){
+                                dayButtonsTab.dayButtons[i].usable = existingDateTab.date[i];
+                            }
+                            /*effacer ecran*/
+                            SDL_RenderClear(renderer);
+                            /*afficher fond*/
+                            SDL_RenderCopy(renderer, texture, NULL, &bgRect);
+                            // Créer une surface contenant le texte
+                            surface = TTF_RenderText_Solid(font, currentMonthString, color);
+                            // Créer une texture à partir de la surface
+                            monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
+                            SDL_FreeSurface(surface);
+                            SDL_QueryTexture(monthTexture, NULL, NULL, &w, &h);
+                            monthRect.w = w;
+                            monthRect.h = h;
+                            // Copier la texture sur le renderer
+                            SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
+                            /*afficher le rendu*/
+                            SDL_RenderPresent(renderer);
                         }
                     /*mois prochain*/
                     else if(
@@ -204,6 +251,28 @@ int main(int argc, char* argv[]){
                             monthJson = getMonthJson(parsedJson, currentMonthYear);
                             dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
                             currentMonthString = getMonthStr(currentMonth);
+
+                            existingDateTab = getExistingDateTab(monthJson);
+                            /*attribut aux boutons le fait qu'ils soient cliquables ou non*/
+                            for(int i = 0; i < dayButtonsTab.dayButtonNumber; i++){
+                                dayButtonsTab.dayButtons[i].usable = existingDateTab.date[i];
+                            }
+                            /*effacer ecran*/
+                            SDL_RenderClear(renderer);
+                            /*afficher fond*/
+                            SDL_RenderCopy(renderer, texture, NULL, &bgRect);
+                            // Créer une surface contenant le texte
+                            surface = TTF_RenderText_Solid(font, currentMonthString, color);
+                            // Créer une texture à partir de la surface
+                            monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
+                            SDL_FreeSurface(surface);
+                            SDL_QueryTexture(monthTexture, NULL, NULL, &w, &h);
+                            monthRect.w = w;
+                            monthRect.h = h;
+                            // Copier la texture sur le renderer
+                            SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
+                            /*afficher le rendu*/
+                            SDL_RenderPresent(renderer);
                         }
                     /*boutons jour*/
                     else{
@@ -212,7 +281,8 @@ int main(int argc, char* argv[]){
                                 (event.motion.x <= (dayButtonsTab.dayButtons[i].x + dayButtonsTab.dayButtons[i].w)) && 
                                 (event.motion.x >= (dayButtonsTab.dayButtons[i].x)) &&
                                 (event.motion.y <= (dayButtonsTab.dayButtons[i].y + dayButtonsTab.dayButtons[i].h)) && 
-                                (event.motion.y >= (dayButtonsTab.dayButtons[i].y)))
+                                (event.motion.y >= (dayButtonsTab.dayButtons[i].y)) &&
+                                (dayButtonsTab.dayButtons[i].usable == 1))
                                 {
                                 printf("bouton %d cliqué\n", dayButtonsTab.dayButtons[i].id);
                                 dayJson = getDayJson(monthJson, dayButtonsTab.dayButtons[i].id);
@@ -220,8 +290,58 @@ int main(int argc, char* argv[]){
                                 entriesTab = getEntriesTab(entriesJson);
                                 /*ici normalement on a un tableau structure avec tous les entrées d'un jour d'un mois*/
                                 for(int j = 0; j < entriesTab.entriesNumber; j++){
-                                printf("%s : %d\n", entriesTab.entries[j].entryName, entriesTab.entries[j].entryValue);
+                                    printf("%s : %d\n", entriesTab.entries[j].entryName, entriesTab.entries[j].entryValue);
                                 }
+                                /*effacer ecran*/
+                                SDL_RenderClear(renderer);
+                                /*afficher fond*/
+                                SDL_RenderCopy(renderer, texture, NULL, &bgRect);
+                                //mois
+                                // Créer une surface contenant le texte
+                                surface = TTF_RenderText_Solid(font, currentMonthString, color);
+                                // Créer une texture à partir de la surface
+                                monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
+                                SDL_FreeSurface(surface);
+                                SDL_QueryTexture(monthTexture, NULL, NULL, &w, &h);
+                                monthRect.w = w;
+                                monthRect.h = h;
+                                // Copier la texture sur le renderer
+                                SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
+                                
+                                //jour
+                                char dateSTR[8];
+                                sprintf(dateSTR, "%d/%d/%d", dayButtonsTab.dayButtons[i].id, currentMonthYear[0], currentMonthYear[1]);
+                                // Créer une surface contenant le texte
+                                surface = TTF_RenderText_Solid(font, dateSTR, color);
+                                // Créer une texture à partir de la surface
+                                dayTexture = SDL_CreateTextureFromSurface(renderer, surface);
+                                SDL_FreeSurface(surface);
+                                SDL_QueryTexture(dayTexture, NULL, NULL, &w, &h);
+                                dayRect.w = w;
+                                dayRect.h = h;
+                                // Copier la texture sur le renderer
+                                SDL_RenderCopy(renderer, dayTexture, NULL, &dayRect);
+
+                                //entries
+                                char entriesSTR[1024] = "";
+                                for(int i = 0; i < entriesTab.entriesNumber; i++){
+                                    char entrySTR[64];
+                                    sprintf(entrySTR, "-%s : %d \n", entriesTab.entries[i].entryName, entriesTab.entries[i].entryValue);
+                                    strcat(entriesSTR, entrySTR);
+                                }
+                                // Créer une surface contenant le texte
+                                surface = TTF_RenderText_Blended_Wrapped(font2, entriesSTR, color, 240);
+                                // Créer une texture à partir de la surface
+                                entriesTexture = SDL_CreateTextureFromSurface(renderer, surface);
+                                SDL_FreeSurface(surface);
+                                SDL_QueryTexture(entriesTexture, NULL, NULL, &w, &h);
+                                entriesRect.w = w;
+                                entriesRect.h = h;
+                                // Copier la texture sur le renderer
+                                SDL_RenderCopy(renderer, entriesTexture, NULL, &entriesRect);
+
+                                /*afficher le rendu*/
+                                SDL_RenderPresent(renderer);
                             }
                         }
                     }

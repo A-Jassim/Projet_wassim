@@ -1,3 +1,4 @@
+#include <string.h>
 #include "mystruct.h"
 
 struct json_object *getParsedJson(){
@@ -35,6 +36,32 @@ struct json_object *getMonthJson(struct json_object *parsedJson, int wantedMonth
         }
     }
     return monthJson;
+}
+
+/*créer une structure tableau qui va servir a savoir si un bouton est cliquable ou non*/
+existingDateTabStruct getExistingDateTab(struct json_object *monthJson){
+    existingDateTabStruct tab;
+    struct json_object *day;
+    struct json_object *date;
+    int dateNbr;
+
+    int daysNumber = json_object_array_length(monthJson);
+
+    tab.dateNumber = 31;
+
+    tab.date = (int *)malloc(tab.dateNumber * sizeof(int));
+
+    for(int i = 0; i < tab.dateNumber; i++){
+        tab.date[i] = 0;
+    }
+    
+    for(int i = 0; i < daysNumber; i++){
+        day = json_object_array_get_idx(monthJson, i);
+        date = json_object_object_get(day, "date");
+        dateNbr = json_object_get_int(json_object_array_get_idx(date, 0));
+        tab.date[dateNbr - 1] = 1;
+    }
+    return tab;
 }
 
 

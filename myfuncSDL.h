@@ -6,19 +6,7 @@ dayButtonsTabStruct refreshDayButtons(int wantedMonth, int wantedYear){
     int dayButtonNumb;
 
     /*regarde le nombre de jour dans le mois*/
-    if((wantedMonth == 1) || (wantedMonth == 3) || 
-    (wantedMonth == 5) || (wantedMonth == 7)  || 
-    (wantedMonth == 8) || (wantedMonth == 10) || 
-    (wantedMonth == 12)){
-
-        dayButtonsTab.dayButtonNumber = 31;
-    }
-    else if(wantedMonth == 2){
-        dayButtonsTab.dayButtonNumber = 28;
-    }
-    else{
-        dayButtonsTab.dayButtonNumber = 30;
-    }
+    dayButtonsTab.dayButtonNumber = 31;
 
     dayButtonsTab.dayButtons = (dayButton *)malloc(dayButtonsTab.dayButtonNumber * sizeof(dayButton));
     
@@ -30,7 +18,8 @@ dayButtonsTabStruct refreshDayButtons(int wantedMonth, int wantedYear){
         dayButtonsTab.dayButtons[i].h = 40;
         dayButtonsTab.dayButtons[i].w = 40;
         dayButtonsTab.dayButtons[i].x = 40 + (column * 40);
-        dayButtonsTab.dayButtons[i].y = 160 + (row * 40);  
+        dayButtonsTab.dayButtons[i].y = 160 + (row * 40);
+        dayButtonsTab.dayButtons[i].usable = 0;
     }
     return dayButtonsTab;
 }
