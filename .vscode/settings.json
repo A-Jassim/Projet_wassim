@@ -3,6 +3,9 @@
         "json.h": "c",
         "stdlib.h": "c",
         "stdio.h": "c",
-        "sdl_ttf.h": "c"
+        "sdl_ttf.h": "c",
+        "time.h": "c",
+        "sdl.h": "c",
+        "myfuncsdl.h": "c"
     }
 }

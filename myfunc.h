@@ -65,23 +65,19 @@ existingDateTabStruct getExistingDateTab(struct json_object *monthJson){
 }
 
 
-struct json_object *getDayJson(struct json_object *monthJson, int wantedDay){
-    struct json_object *day;
-    struct json_object *date;
+// Fonction mise à jour pour obtenir les données d'un jour spécifique
+struct json_object *getDayJson(struct json_object *monthJson, int day) {
+    for (int i = 0; i < json_object_array_length(monthJson); i++) {
+        struct json_object *entry = json_object_array_get_idx(monthJson, i);
+        struct json_object *dateObj;
 
-    int dayDate;
-
-    int daysNumber = json_object_array_length(monthJson);
-
-    for(int i = 0; i < daysNumber; i++){
-        day = json_object_array_get_idx(monthJson, i);
-        date = json_object_object_get(day, "date");
-        dayDate = json_object_get_int(json_object_array_get_idx(date, 0));
-
-        if(wantedDay == dayDate){
-            return day;
+        if (json_object_object_get_ex(entry, "date", &dateObj)) {
+            if (json_object_get_int(json_object_array_get_idx(dateObj, 0)) == day) {
+                return entry;
+            }
         }
     }
+    return NULL;
 }
 
 
