@@ -18,97 +18,83 @@ gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL2_ttf
 #define W_HEIGHT 480
 #define W_WIDTH 640
 
-int main(int argc, char* argv[]){
-    SDL_Window *window = NULL;  
-    SDL_Renderer *renderer = NULL;
+#include <SDL2/SDL.h>
+#include <stdio.h>
 
-    SDL_Surface *surface = NULL;
-    SDL_Texture *texture = NULL;
-
-    /*textures textes*/
-    SDL_Texture *monthTexture = NULL;
-    SDL_Texture *dayTexture = NULL;
-    SDL_Texture *entriesTexture = NULL;
-
-    /*lancement sdl*/
-    if(SDL_Init(SDL_INIT_VIDEO) != 0){
+int main(int argc, char *argv[]) {
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        printf("Erreur d'initialisation de la SDL : %s\n", SDL_GetError());
         return 1;
     }
 
-    // Initialisation de SDL_ttf
-    if (TTF_Init() == -1) {
-        return 1;
-    }
+    // Création de la fenêtre principale (père)
+    SDL_Window *window_pere = SDL_CreateWindow(
+        "Fenêtre Père",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        800, 600,
+        SDL_WINDOW_SHOWN
+    );
 
-
-    /*création de la fenêtre*/
-    window = SDL_CreateWindow("Calendrier", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W_WIDTH, W_HEIGHT, 0);
-    if(window == NULL){
-        printf("Erreur création de la fenêtre : %s", SDL_GetError());
+    if (!window_pere) {
+        printf("Erreur lors de la création de la fenêtre père : %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
 
-    /*création du rendu*/
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if(renderer == NULL){
-        printf("Erreur création du rendu : %s", SDL_GetError());
-        SDL_DestroyWindow(window);
+    // Création de la fenêtre fils (sans bordures)
+    SDL_Window *window_fils = SDL_CreateWindow(
+        "Fenêtre Fils",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        400, 300,
+        SDL_WINDOW_SHOWN | SDL_WINDOW_BORDERLESS
+    );
+
+    if (!window_fils) {
+        printf("Erreur lors de la création de la fenêtre fils : %s\n", SDL_GetError());
+        SDL_DestroyWindow(window_pere);
         SDL_Quit();
         return 1;
     }
 
-    /*textes*/
-    // Charger une police
-    TTF_Font* font = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf", 24);
-    if (font == NULL) {
-        // Gestion d'erreur
-        return 1;
-    }
+    // Positionner la fenêtre fils relativement à la fenêtre père
+    int pere_x, pere_y, pere_w, pere_h;
+    SDL_GetWindowPosition(window_pere, &pere_x, &pere_y);
+    SDL_GetWindowSize(window_pere, &pere_w, &pere_h);
 
-    // Couleur du texte
-    SDL_Color color = {255, 255, 255}; // Noir
+    SDL_SetWindowPosition(window_fils,
+                          pere_x + pere_w / 2 - 200,  // Décalage X pour centrer
+                          pere_y + pere_h / 2 - 150); // Décalage Y pour centrer
 
-
-    // Rectangle pour positionner le texte
-    SDL_Rect monthRect;
-    monthRect.x = 120;
-    monthRect.y = 80;
-    monthRect.w = 3*40;
-    monthRect.h = 40;
-
-
-    /*main*/
-    int quit = 0;
+    // Boucle principale
+    int running = 1;
     SDL_Event event;
-    while(!quit){
-        /*effacer ecran*/
-        SDL_RenderClear(renderer);
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+                case SDL_QUIT: // L'utilisateur ferme une fenêtre
+                    running = 0;
+                    break;
 
-        // Créer une surface contenant le texte
-        surface = TTF_RenderText_Solid(font, "DEC", color);
-
-        // Créer une texture à partir de la surface
-        monthTexture = SDL_CreateTextureFromSurface(renderer, surface);
-        SDL_FreeSurface(surface);
-
-        // Copier la texture sur le renderer
-        SDL_RenderCopy(renderer, monthTexture, NULL, &monthRect);
-
-        /*afficher le rendu*/
-        SDL_RenderPresent(renderer);
-        /*evenement*/
-        while(SDL_PollEvent(&event)){
-            switch (event.type){
-                case SDL_QUIT:
-                    quit = 1;
+                case SDL_WINDOWEVENT: // Gestion des événements liés aux fenêtres
+                    if (event.window.event == SDL_WINDOWEVENT_CLOSE) {
+                        // Fermer une fenêtre spécifique
+                        if (event.window.windowID == SDL_GetWindowID(window_fils)) {
+                            SDL_DestroyWindow(window_fils);
+                            window_fils = NULL; // Marque la fenêtre comme fermée
+                        } else if (event.window.windowID == SDL_GetWindowID(window_pere)) {
+                            running = 0; // Quitter la boucle si la fenêtre père est fermée
+                        }
+                    }
                     break;
             }
         }
     }
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
+    // Nettoyage
+    if (window_fils) SDL_DestroyWindow(window_fils);
+    SDL_DestroyWindow(window_pere);
     SDL_Quit();
+
     return 0;
 }
+

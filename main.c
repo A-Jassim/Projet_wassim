@@ -3,7 +3,7 @@ pour compiler sur windows:
 gcc src/main.c -o bin/prog -I include -L lib -lmingw32 -lSDL2main -lSDL2
 
 linux:
-gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL_ttf
+gcc main.c -o prog $(sdl2-config --cflags --libs) -ljson-c -lSDL2_ttf
 gcc main.c -o prog -ljson-c -lSDL2 -lSDL2_ttf -I/usr/lib/
 
 */
@@ -15,13 +15,284 @@ gcc main.c -o prog -ljson-c -lSDL2 -lSDL2_ttf -I/usr/lib/
 #include <json-c/json.h>
 #include "myfunc.h"
 #include "myfuncSDL.h"
+#include <string.h>
 
 
 #define W_HEIGHT 480
 #define W_WIDTH 640
+#define CHILD_W 320
+#define CHILD_H 240
 
 
 void refreshScreen();
+
+void extractDate(const char *input, int *day, int *month, int *year) {
+    char buffer[20]; 
+    strcpy(buffer, input);
+
+    // Utiliser strtok pour séparer les parties de la date
+    char *t = strtok(buffer, "/");
+    if (t != NULL) {
+        *day = atoi(t); // Convertit la chaîne en entier
+        t = strtok(NULL, "/"); // Récupérer la partie suivante (mois)
+    }
+    if (t != NULL) {
+        *month = atoi(t);
+        t = strtok(NULL, "/"); // Récupérer la partie suivante (année)
+    }
+    if (t != NULL) {
+        *year = atoi(t);
+    }
+}
+
+void write_to_json(const char *filename, int day, int month, int year, const char *entryName, int entryValue) {
+    // Charger le contenu existant du fichier JSON
+    struct json_object *root = NULL;
+    FILE *file = fopen(filename, "r");
+
+    if (file) {
+        // Charger le fichier existant
+        char buffer[8192];
+        fread(buffer, sizeof(char), sizeof(buffer), file);
+        fclose(file);
+        root = json_tokener_parse(buffer);
+    }
+
+    if (!root || !json_object_is_type(root, json_type_array)) {
+        // Si le fichier n'existe pas ou n'est pas un tableau, créer un tableau vide
+        root = json_object_new_array();
+    }
+
+    // Créer une chaîne pour représenter la date au format "jour-mois-année"
+    char dateStr[16];
+    snprintf(dateStr, sizeof(dateStr), "%d-%d-%d", day, month, year);
+
+    // Chercher si la date existe déjà
+    int found = 0;
+    for (int i = 0; i < json_object_array_length(root); i++) {
+        struct json_object *entry = json_object_array_get_idx(root, i);
+        struct json_object *dateObj;
+
+        if (json_object_object_get_ex(entry, "date", &dateObj)) {
+            // Vérifier si la date correspond
+            char existingDateStr[16];
+            snprintf(existingDateStr, sizeof(existingDateStr), "%d-%d-%d",
+                     json_object_get_int(json_object_array_get_idx(dateObj, 0)),
+                     json_object_get_int(json_object_array_get_idx(dateObj, 1)),
+                     json_object_get_int(json_object_array_get_idx(dateObj, 2)));
+
+            if (strcmp(existingDateStr, dateStr) == 0) {
+                // Date trouvée, ajouter l'entrée à la liste des entrées existantes
+                struct json_object *entriesObj;
+                if (json_object_object_get_ex(entry, "entries", &entriesObj)) {
+                    struct json_object *newEntry = json_object_new_array();
+                    json_object_array_add(newEntry, json_object_new_string(entryName));
+                    json_object_array_add(newEntry, json_object_new_int(entryValue));
+                    json_object_array_add(entriesObj, newEntry);
+                }
+                found = 1;
+                break;
+            }
+        }
+    }
+
+    // Si la date n'existe pas encore, ajouter une nouvelle entrée pour cette date
+    if (!found) {
+        struct json_object *newDateObj = json_object_new_object();
+
+        // Ajouter la date
+        struct json_object *dateArray = json_object_new_array();
+        json_object_array_add(dateArray, json_object_new_int(day));
+        json_object_array_add(dateArray, json_object_new_int(month));
+        json_object_array_add(dateArray, json_object_new_int(year));
+        json_object_object_add(newDateObj, "date", dateArray);
+
+        // Ajouter l'entrée
+        struct json_object *entriesArray = json_object_new_array();
+        struct json_object *newEntry = json_object_new_array();
+        json_object_array_add(newEntry, json_object_new_string(entryName));
+        json_object_array_add(newEntry, json_object_new_int(entryValue));
+        json_object_array_add(entriesArray, newEntry);
+        json_object_object_add(newDateObj, "entries", entriesArray);
+
+        // Ajouter l'objet à la racine
+        json_object_array_add(root, newDateObj);
+    }
+
+    // Sauvegarder le fichier
+    if (json_object_to_file_ext(filename, root, JSON_C_TO_STRING_PRETTY) == -1) {
+        printf("Erreur lors de l'écriture dans le fichier JSON\n");
+    } else {
+        printf("Données JSON mises à jour avec succès dans le fichier %s\n", filename);
+    }
+
+    // Libérer la mémoire
+    json_object_put(root);
+}
+
+
+void inputBox_withchild(SDL_Renderer *renderer, TTF_Font *font, SDL_Color textColor, SDL_Color boxColor, 
+                        int mouseX, int mouseY, int mainWindowX, int mainWindowY, 
+                        int windowWidth, int windowHeight, SDL_Window **childWindow, SDL_Renderer **childRenderer) {
+    if (mouseX >= mainWindowX + windowWidth - 100 && mouseY >= mainWindowY + windowHeight - 100) {
+        if (*childWindow == NULL) {
+            *childWindow = SDL_CreateWindow(
+                "Fenêtre Fils",
+                mainWindowX + W_WIDTH / 2 - CHILD_W / 2,
+                mainWindowY + W_HEIGHT / 2 - CHILD_H / 2,
+                CHILD_W, CHILD_H,
+                SDL_WINDOW_SHOWN | SDL_WINDOW_BORDERLESS
+            );
+
+            if (*childWindow == NULL) {
+                printf("Erreur création de la fenêtre fils : %s\n", SDL_GetError());
+                return;
+            } else {
+                *childRenderer = SDL_CreateRenderer(*childWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+                if (*childRenderer == NULL) {
+                    printf("Erreur création du rendu fils : %s\n", SDL_GetError());
+                    SDL_DestroyWindow(*childWindow);
+                    *childWindow = NULL;
+                    return;
+                }
+            }
+        }
+    }
+
+    if (*childWindow && *childRenderer) {
+        int quit = 0;
+        SDL_Event event;
+
+        // Texte d'entrée
+        char inputText[3][128] = {"", "", ""}; // Zones réduites
+        SDL_Surface *textSurface = NULL;
+        SDL_Texture *textTexture = NULL;
+
+        // Positions et dimensions des boîtes d'entrée (réduites pour être visibles)
+        SDL_Rect inputBoxes[3] = {
+            {10, 30, CHILD_W - 20, 40},  // "Nom de l'abonnement"
+            {10, 100, CHILD_W - 20, 40}, // "Date"
+            {10, 170, CHILD_W - 20, 40}  // "Prix"
+        };
+
+        // Étiquettes au-dessus des boîtes
+        const char *labels[3] = {"Nom de l'abonnement", "Date(DD/MM/YYYY)", "Prix"};
+
+        // Texte sélectionné (0 = "Nom de l'abonnement", 1 = "Date", 2 = "Prix")
+        int selectedBox = 0;
+
+        SDL_StartTextInput(); // Activer la saisie de texte
+        while (!quit) {
+            // Gestion des événements
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_QUIT) {
+                    quit = 1;
+                } else if (event.type == SDL_KEYDOWN) {
+                    // Gestion des touches
+                    if (event.key.keysym.sym == SDLK_TAB) {
+                        // Passer à la boîte suivante
+                        selectedBox = (selectedBox + 1) % 3;
+                    } else if (event.key.keysym.sym == SDLK_BACKSPACE && strlen(inputText[selectedBox]) > 0) {
+                        inputText[selectedBox][strlen(inputText[selectedBox]) - 1] = '\0'; // Supprimer le dernier caractère
+                    } 
+                } else if (event.type == SDL_TEXTINPUT) {
+                    // Ajouter du texte si pas de modificateur (Ctrl, Alt, etc.)
+                    if (!(SDL_GetModState() & KMOD_CTRL) && !(SDL_GetModState() & KMOD_ALT)) {
+                        if (strlen(inputText[selectedBox]) + strlen(event.text.text) < sizeof(inputText[selectedBox])) {
+                            strcat(inputText[selectedBox], event.text.text); // Ajouter le texte à l'entrée active
+                        }
+                    }
+                } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+                    int childMouseX, childMouseY;
+                    SDL_GetGlobalMouseState(&childMouseX, &childMouseY);
+
+                    int childX, childY;
+                    SDL_GetWindowPosition(*childWindow, &childX, &childY);
+
+                    // Coordonnées de la zone de fermeture (en bas à droite de la fenêtre enfant)
+                    int closeZoneXStart = childX + CHILD_W - 50;
+                    int closeZoneYStart = childY + CHILD_H - 50;
+                    int closeZoneXEnd = childX + CHILD_W;
+                    int closeZoneYEnd = childY + CHILD_H;
+
+                    // Coordonnées de la zone pour enregistrer
+                    int saveZoneXStart = childX;
+                    int saveZoneYStart = childY;
+                    int saveZoneXEnd = childX + 50;
+                    int saveZoneYEnd = childY + 50;
+
+                    // Vérifiez si le clic est dans la zone de sauvegarde
+                    if (childMouseX >= saveZoneXStart && childMouseX <= saveZoneXEnd &&
+                        childMouseY >= saveZoneYStart && childMouseY <= saveZoneYEnd) {
+                        printf("Sauvegarde des données : Nom: %s, Date: %s, Prix: %s\n", inputText[0], inputText[1], inputText[2]);
+
+                        int day, month, year;
+                        extractDate(inputText[1], &day, &month, &year);
+
+                        int price = atoi(inputText[2]);
+
+                        write_to_json("data.json", day, month, year, inputText[0], price);
+
+                        strcpy(inputText[0], "");
+                        strcpy(inputText[1], "");
+                        strcpy(inputText[2], "");
+                        selectedBox = 0;
+                    }
+                    // Vérifiez si le clic est dans la zone de fermeture
+                    if (childMouseX >= closeZoneXStart && childMouseX <= closeZoneXEnd &&
+                        childMouseY >= closeZoneYStart && childMouseY <= closeZoneYEnd) {
+                        SDL_DestroyRenderer(*childRenderer);
+                        SDL_DestroyWindow(*childWindow);
+                        *childWindow = NULL;
+                        *childRenderer = NULL;
+                        printf("Fenêtre fils fermée depuis la zone\n");
+                        return;
+                    }
+                    
+
+                }
+            }
+
+            // Effacer l'écran de la fenêtre enfant
+            SDL_SetRenderDrawColor(*childRenderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+            SDL_RenderClear(*childRenderer);
+
+            // Dessiner les étiquettes et les boîtes d'entrée
+            for (int i = 0; i < 3; i++) {
+                // Dessiner l'étiquette
+                textSurface = TTF_RenderText_Solid(font, labels[i], textColor);
+                textTexture = SDL_CreateTextureFromSurface(*childRenderer, textSurface);
+                SDL_Rect labelRect = {inputBoxes[i].x, inputBoxes[i].y - 25, 0, 0};
+                SDL_QueryTexture(textTexture, NULL, NULL, &labelRect.w, &labelRect.h);
+                SDL_RenderCopy(*childRenderer, textTexture, NULL, &labelRect);
+                SDL_FreeSurface(textSurface);
+                SDL_DestroyTexture(textTexture);
+
+                // Dessiner la boîte d'entrée
+                SDL_SetRenderDrawColor(*childRenderer, boxColor.r, boxColor.g, boxColor.b, SDL_ALPHA_OPAQUE);
+                SDL_RenderFillRect(*childRenderer, &inputBoxes[i]);
+
+                // Afficher le texte de l'entrée
+                if (strlen(inputText[i]) > 0) {
+                    textSurface = TTF_RenderText_Solid(font, inputText[i], textColor);
+                    textTexture = SDL_CreateTextureFromSurface(*childRenderer, textSurface);
+                    SDL_Rect textRect = {inputBoxes[i].x + 10, inputBoxes[i].y + 10, 0, 0};
+                    SDL_QueryTexture(textTexture, NULL, NULL, &textRect.w, &textRect.h);
+                    SDL_RenderCopy(*childRenderer, textTexture, NULL, &textRect);
+                    SDL_FreeSurface(textSurface);
+                    SDL_DestroyTexture(textTexture);
+                }
+            }
+
+            // Afficher le rendu
+            SDL_RenderPresent(*childRenderer);
+        }
+        SDL_StopTextInput(); // Désactiver la saisie de texte
+    }
+}
+
+
+
 
 
 int main(int argc, char* argv[]){
@@ -34,7 +305,9 @@ int main(int argc, char* argv[]){
 
 
     SDL_Window *window = NULL;  
+    SDL_Window *childWindow = NULL;  // Fenêtre fils
     SDL_Renderer *renderer = NULL;
+    SDL_Renderer *childRenderer = NULL;  // Rendu de la fenêtre fils
 
     SDL_Surface *surface = NULL;
     SDL_Texture *texture = NULL;
@@ -46,22 +319,29 @@ int main(int argc, char* argv[]){
 
     /*json parsé*/
     struct json_object *parsedJson;
-    parsedJson = getParsedJson();
     struct json_object *monthJson;
-    monthJson = getMonthJson(parsedJson, currentMonthYear);
     struct json_object *dayJson;
     struct json_object *entriesJson;
     entriesTabStruct entriesTab;
-    
     dayButtonsTabStruct dayButtonsTab;
     existingDateTabStruct existingDateTab;
 
-    /*boutons*/
-    dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
+    /* Charger et parser le JSON initial */
+    parsedJson = json_object_from_file("data.json");
+    if (!parsedJson) {
+        printf("Erreur : Impossible de charger le fichier JSON\n");
+        SDL_Quit();
+        return 1;
+    }
 
+    monthJson = getMonthJson(parsedJson, currentMonthYear);
+
+    /* Boutons pour les jours et les dates existantes */
+    dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
     existingDateTab = getExistingDateTab(monthJson);
-    /*attribut aux boutons le fait qu'ils soient cliquables ou non*/
-    for(int i = 0; i < dayButtonsTab.dayButtonNumber; i++){
+
+    /* Attribuer aux boutons s'ils sont cliquables ou non */
+    for (int i = 0; i < dayButtonsTab.dayButtonNumber; i++) {
         dayButtonsTab.dayButtons[i].usable = existingDateTab.date[i];
     }
 
@@ -83,14 +363,13 @@ int main(int argc, char* argv[]){
     }
 
 
-    /*création de la fenêtre*/
+    /* Création de la fenêtre principale */
     window = SDL_CreateWindow("Calendrier", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W_WIDTH, W_HEIGHT, 0);
-    if(window == NULL){
+    if (window == NULL) {
         printf("Erreur création de la fenêtre : %s", SDL_GetError());
         SDL_Quit();
         return 1;
     }
-
     /*création du rendu*/
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if(renderer == NULL){
@@ -122,17 +401,25 @@ int main(int argc, char* argv[]){
     bgRect.x = 0;
     bgRect.y = 0;
 
+       
+    int parentX, parentY;
+    SDL_GetWindowPosition(window, &parentX, &parentY);
+    
+
+    
 
     /*textes*/
     // Charger une police
-    TTF_Font* font = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf", 40);
+    TTF_Font* font = TTF_OpenFont("DejaVuSans.ttf", 40);
     if (font == NULL) {
         // Gestion d'erreur
+        perror("[font]");
         return 1;
     }
-    TTF_Font* font2 = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/Ubuntu-Th.ttf", 20);
+    TTF_Font* font2 = TTF_OpenFont("DejaVuSans.ttf", 20);
     if (font2 == NULL) {
         // Gestion d'erreur
+        perror("[font]");
         return 1;
     }
 
@@ -153,7 +440,7 @@ int main(int argc, char* argv[]){
     SDL_Rect entriesRect;
     entriesRect.x = 360;
     entriesRect.y = 200;
-
+    
 
     /*effacer ecran*/
     SDL_RenderClear(renderer);
@@ -182,6 +469,16 @@ int main(int argc, char* argv[]){
             switch (event.type){
                 case SDL_QUIT:
                     quit = 1;
+                    break;
+                case SDL_WINDOWEVENT:
+                    if (event.window.event == SDL_WINDOWEVENT_CLOSE) {
+                        if (event.window.windowID == SDL_GetWindowID(childWindow)) {
+                            SDL_DestroyWindow(childWindow);
+                            childWindow = NULL;
+                        } else if (event.window.windowID == SDL_GetWindowID(window)) {
+                            quit = 1;
+                        }
+                    }
                     break;
                 
                 case SDL_MOUSEBUTTONDOWN:
@@ -345,17 +642,51 @@ int main(int argc, char* argv[]){
                             }
                         }
                     }
-                    continue;
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        int mouseX, mouseY;
+                        SDL_GetGlobalMouseState(&mouseX, &mouseY);
+
+                        // Vérifiez si le clic est en bas à droite
+                        if (!childWindow) {
+                            int windowWidth, windowHeight;
+                            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+
+                            // Si le clic est en bas à droite de la fenêtre principale
+                            int mainWindowX, mainWindowY;
+                            SDL_GetWindowPosition(window, &mainWindowX, &mainWindowY);
+                            SDL_Color textColor = {0, 0, 0}; // Noir
+                            SDL_Color boxColor = {200, 200, 200}; // Gris clair
+                            inputBox_withchild(childRenderer, font2, textColor, boxColor,mouseX, mouseY, mainWindowX, mainWindowY, windowWidth, windowHeight,&childWindow,&childRenderer);
+                            json_object_put(parsedJson);  // Libérer la mémoire du JSON précédent
+                            parsedJson = json_object_from_file("data.json");
+                            if (parsedJson) {
+                                monthJson = getMonthJson(parsedJson, currentMonthYear);
+                                dayButtonsTab = refreshDayButtons(currentMonth, currentYear);
+                                existingDateTab = getExistingDateTab(monthJson);
+
+                                for (int i = 0; i < dayButtonsTab.dayButtonNumber; i++) {
+                                    dayButtonsTab.dayButtons[i].usable = existingDateTab.date[i];
+                                }
+                            } 
+                }  
+                continue;
                 
                 case SDL_MOUSEMOTION:
                     printf("%d %d\n", event.motion.x, event.motion.y);
                     continue;
+                default:
+                    break;
             }
+
         }
     }
-
+    }
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    if (parsedJson){
+        json_object_put(parsedJson);// Libérer la mémoire du JSON 
+    }
     SDL_Quit();
     return 0;
 }
+
